@@ -266,6 +266,44 @@
       border: 1px solid var(--border);
     }
 
+    /* ゲインスライダー */
+    .gain-control {
+      width: 100%;
+      max-width: 400px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 20px;
+    }
+
+    .gain-label-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    .gain-label-row span { color: var(--text-muted); }
+    .gain-value {
+      font-weight: 700;
+      color: var(--primary);
+      font-size: 16px;
+    }
+
+    input[type=range] {
+      width: 100%;
+      accent-color: var(--primary);
+      height: 6px;
+      cursor: pointer;
+    }
+
+    .gain-note {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+
     /* Stage表示 */
     .stage-notice {
       width: 100%;
@@ -341,6 +379,17 @@
     <div class="waveform-bar" style="height:24px"></div>
   </div>
 
+  <!-- ゲインスライダー -->
+  <div class="gain-control">
+    <div class="gain-label-row">
+      <span>🔊 マイク音量増幅</span>
+      <span class="gain-value" id="gainLabel">2.0x</span>
+    </div>
+    <input type="range" id="gainSlider" min="1" max="5" step="0.5" value="2"
+      oninput="document.getElementById('gainLabel').textContent = parseFloat(this.value).toFixed(1) + 'x'">
+    <div class="gain-note">会議室中央に置く場合は 3〜4x 推奨</div>
+  </div>
+
   <!-- 録音ボタン -->
   <div style="text-align:center">
     <button class="record-btn" id="recordBtn" onclick="toggleRecording()">
@@ -390,6 +439,8 @@
   let recordingBlob = null;
   let timerInterval = null;
   let secondsElapsed = 0;
+  let audioCtx = null;
+  let rawStream = null;
   const MAX_SECONDS = 65 * 60; // 65分で強制停止
   const WARN_SECONDS = 55 * 60; // 55分で警告
 
@@ -431,21 +482,30 @@
 
   async function startRecording() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      rawStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
           sampleRate: 16000,
-          echoCancellation: false,  // 会議録音では無効推奨
+          echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: true,
         }
       });
 
+      // Web Audio API で音量増幅してからMediaRecorderへ渡す
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(rawStream);
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = parseFloat(document.getElementById('gainSlider').value);
+      const destination = audioCtx.createMediaStreamDestination();
+      source.connect(gainNode);
+      gainNode.connect(destination);
+
       // iOS Safari では audio/mp4 を優先
       const mimeType = getSupportedMimeType();
 
       const options = mimeType ? { mimeType } : {};
-      mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorder = new MediaRecorder(destination.stream, options);
       audioChunks = [];
 
       mediaRecorder.addEventListener('dataavailable', (e) => {
@@ -455,7 +515,9 @@
       mediaRecorder.addEventListener('stop', () => {
         const blob = new Blob(audioChunks, { type: mimeType || 'audio/mp4' });
         onRecordingComplete(blob);
-        stream.getTracks().forEach((t) => t.stop());
+        rawStream.getTracks().forEach((t) => t.stop());
+        audioCtx.close();
+        audioCtx = null;
       });
 
       // iOSは timeslice を使わないと dataavailable が stop 時にしか来ない場合あり
