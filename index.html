@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="会議メモ">
+  <meta name="theme-color" content="#4f46e5">
+  <link rel="manifest" href="manifest.json">
+  <title>会議メモ - 議事録自動生成</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary: #4f46e5;
+      --primary-dark: #3730a3;
+      --danger: #ef4444;
+      --danger-dark: #b91c1c;
+      --success: #10b981;
+      --bg: #0f0f23;
+      --surface: #1a1a3e;
+      --surface2: #252550;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --border: #334155;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      padding-top: var(--safe-top);
+      padding-bottom: var(--safe-bottom);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    header {
+      background: var(--surface);
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    header .badge {
+      font-size: 11px;
+      background: var(--primary);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 20px;
+      gap: 32px;
+    }
+
+    /* ステータス表示 */
+    .status-card {
+      width: 100%;
+      max-width: 400px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .status-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .status-text {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .status-text.idle { color: var(--text-muted); }
+    .status-text.recording { color: var(--danger); }
+    .status-text.processing { color: #f59e0b; }
+    .status-text.done { color: var(--success); }
+
+    /* タイマー */
+    .timer-display {
+      font-size: 72px;
+      font-weight: 200;
+      letter-spacing: -2px;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      line-height: 1;
+    }
+
+    .timer-display.recording {
+      color: var(--danger);
+    }
+
+    .timer-warning {
+      font-size: 13px;
+      color: #f59e0b;
+      margin-top: 6px;
+      min-height: 20px;
+    }
+
+    /* 波形アニメーション */
+    .waveform {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 40px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .waveform.active { opacity: 1; }
+
+    .waveform-bar {
+      width: 5px;
+      background: var(--danger);
+      border-radius: 3px;
+      animation: wave 1.2s ease-in-out infinite;
+    }
+
+    .waveform-bar:nth-child(1) { animation-delay: 0s; }
+    .waveform-bar:nth-child(2) { animation-delay: 0.1s; }
+    .waveform-bar:nth-child(3) { animation-delay: 0.2s; }
+    .waveform-bar:nth-child(4) { animation-delay: 0.1s; }
+    .waveform-bar:nth-child(5) { animation-delay: 0s; }
+    .waveform-bar:nth-child(6) { animation-delay: 0.15s; }
+    .waveform-bar:nth-child(7) { animation-delay: 0.05s; }
+
+    @keyframes wave {
+      0%, 100% { height: 8px; }
+      50% { height: 32px; }
+    }
+
+    /* メインボタン */
+    .record-btn {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      transition: transform 0.15s, box-shadow 0.15s;
+      background: var(--primary);
+      box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .record-btn:active { transform: scale(0.94); }
+
+    .record-btn.recording {
+      background: var(--danger);
+      box-shadow: 0 0 0 12px rgba(239, 68, 68, 0.2);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0.2); }
+      50% { box-shadow: 0 0 0 24px rgba(239, 68, 68, 0.05); }
+    }
+
+    .record-btn-hint {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 12px;
+    }
+
+    /* 録音完了後エリア */
+    .result-area {
+      width: 100%;
+      max-width: 400px;
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .result-area.visible { display: flex; }
+
+    .result-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    audio {
+      width: 100%;
+      border-radius: 8px;
+      accent-color: var(--primary);
+    }
+
+    .file-info {
+      background: var(--surface2);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* アクションボタン */
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: opacity 0.15s;
+    }
+
+    .btn:active { opacity: 0.7; }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-danger {
+      background: var(--surface2);
+      color: var(--danger);
+      border: 1px solid var(--border);
+    }
+
+    /* Stage表示 */
+    .stage-notice {
+      width: 100%;
+      max-width: 400px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .stage-notice strong {
+      color: var(--primary);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    /* エラー表示 */
+    .error-toast {
+      position: fixed;
+      bottom: calc(20px + var(--safe-bottom));
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #7f1d1d;
+      color: #fca5a5;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      max-width: 320px;
+      text-align: center;
+      transition: transform 0.3s ease;
+      z-index: 100;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+
+    .error-toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:22px">🎙️</span>
+  <h1>会議メモ</h1>
+  <span class="badge">Stage 1</span>
+</header>
+
+<main>
+  <!-- ステータス -->
+  <div class="status-card">
+    <div class="status-label">ステータス</div>
+    <div class="status-text idle" id="statusText">待機中</div>
+  </div>
+
+  <!-- タイマー -->
+  <div style="text-align:center">
+    <div class="timer-display" id="timerDisplay">00:00</div>
+    <div class="timer-warning" id="timerWarning"></div>
+  </div>
+
+  <!-- 波形 -->
+  <div class="waveform" id="waveform">
+    <div class="waveform-bar" style="height:12px"></div>
+    <div class="waveform-bar" style="height:20px"></div>
+    <div class="waveform-bar" style="height:28px"></div>
+    <div class="waveform-bar" style="height:20px"></div>
+    <div class="waveform-bar" style="height:32px"></div>
+    <div class="waveform-bar" style="height:16px"></div>
+    <div class="waveform-bar" style="height:24px"></div>
+  </div>
+
+  <!-- 録音ボタン -->
+  <div style="text-align:center">
+    <button class="record-btn" id="recordBtn" onclick="toggleRecording()">
+      🎙️
+    </button>
+    <div class="record-btn-hint" id="recordHint">タップして録音開始</div>
+  </div>
+
+  <!-- 録音後の結果エリア -->
+  <div class="result-area" id="resultArea">
+    <div class="result-title">🔊 録音データ</div>
+    <audio controls id="audioPlayer"></audio>
+    <div class="file-info">
+      <span id="audioFormat">形式: —</span>
+      <span id="audioDuration">長さ: —</span>
+    </div>
+    <div class="action-buttons">
+      <button class="btn btn-primary" onclick="proceedToSTT()">
+        📝 議事録を作成 →
+      </button>
+      <button class="btn btn-danger" onclick="discardRecording()">
+        🗑️ 破棄
+      </button>
+    </div>
+  </div>
+
+  <!-- Stage 1 注意書き -->
+  <div class="stage-notice">
+    <strong>🔧 Stage 1（録音テスト）</strong>
+    録音→再生の動作確認フェーズです。「議事録を作成」ボタンはStage 2で有効になります。<br>
+    iPhoneでHomeScreen追加後にマイク許可が正しく動くか確認してください。
+  </div>
+</main>
+
+<!-- エラートースト -->
+<div class="error-toast" id="errorToast"></div>
+
+<script>
+  // Service Worker 登録
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+
+  // --- 状態管理 ---
+  let mediaRecorder = null;
+  let audioChunks = [];
+  let recordingBlob = null;
+  let timerInterval = null;
+  let secondsElapsed = 0;
+  const MAX_SECONDS = 65 * 60; // 65分で強制停止
+  const WARN_SECONDS = 55 * 60; // 55分で警告
+
+  // --- UI更新 ---
+  const recordBtn = document.getElementById('recordBtn');
+  const recordHint = document.getElementById('recordHint');
+  const timerDisplay = document.getElementById('timerDisplay');
+  const timerWarning = document.getElementById('timerWarning');
+  const statusText = document.getElementById('statusText');
+  const waveform = document.getElementById('waveform');
+  const resultArea = document.getElementById('resultArea');
+
+  function formatTime(secs) {
+    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const s = (secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  }
+
+  function setStatus(state, label) {
+    statusText.className = `status-text ${state}`;
+    statusText.textContent = label;
+  }
+
+  function showError(msg) {
+    const toast = document.getElementById('errorToast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 4000);
+  }
+
+  // --- 録音トグル ---
+  async function toggleRecording() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      stopRecording();
+    } else {
+      await startRecording();
+    }
+  }
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 16000,
+          echoCancellation: false,  // 会議録音では無効推奨
+          noiseSuppression: false,
+          autoGainControl: true,
+        }
+      });
+
+      // iOS Safari では audio/mp4 を優先
+      const mimeType = getSupportedMimeType();
+
+      const options = mimeType ? { mimeType } : {};
+      mediaRecorder = new MediaRecorder(stream, options);
+      audioChunks = [];
+
+      mediaRecorder.addEventListener('dataavailable', (e) => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      });
+
+      mediaRecorder.addEventListener('stop', () => {
+        const blob = new Blob(audioChunks, { type: mimeType || 'audio/mp4' });
+        onRecordingComplete(blob);
+        stream.getTracks().forEach((t) => t.stop());
+      });
+
+      // iOSは timeslice を使わないと dataavailable が stop 時にしか来ない場合あり
+      mediaRecorder.start(1000);
+
+      // UI
+      recordBtn.classList.add('recording');
+      recordBtn.textContent = '⏹️';
+      recordHint.textContent = 'タップして録音停止';
+      waveform.classList.add('active');
+      resultArea.classList.remove('visible');
+      setStatus('recording', '🔴 録音中...');
+
+      // タイマー
+      secondsElapsed = 0;
+      timerDisplay.className = 'timer-display recording';
+      timerWarning.textContent = '';
+      timerInterval = setInterval(() => {
+        secondsElapsed++;
+        timerDisplay.textContent = formatTime(secondsElapsed);
+
+        if (secondsElapsed >= WARN_SECONDS) {
+          timerWarning.textContent = `⚠️ 残り約${Math.ceil((MAX_SECONDS - secondsElapsed) / 60)}分`;
+        }
+        if (secondsElapsed >= MAX_SECONDS) {
+          stopRecording();
+        }
+      }, 1000);
+
+    } catch (err) {
+      console.error(err);
+      if (err.name === 'NotAllowedError') {
+        showError('マイクの使用が許可されていません。設定→Safari→マイクを確認してください。');
+      } else {
+        showError(`録音を開始できませんでした: ${err.message}`);
+      }
+    }
+  }
+
+  function stopRecording() {
+    if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+    clearInterval(timerInterval);
+    mediaRecorder.stop();
+
+    recordBtn.classList.remove('recording');
+    recordBtn.textContent = '🎙️';
+    recordHint.textContent = 'タップして録音開始';
+    waveform.classList.remove('active');
+    timerDisplay.className = 'timer-display';
+    setStatus('processing', '⏳ 処理中...');
+  }
+
+  function onRecordingComplete(blob) {
+    recordingBlob = blob;
+    const url = URL.createObjectURL(blob);
+    const player = document.getElementById('audioPlayer');
+    player.src = url;
+
+    // ファイル情報
+    const mb = (blob.size / 1024 / 1024).toFixed(1);
+    document.getElementById('audioFormat').textContent = `形式: ${blob.type || 'audio/mp4'}`;
+    document.getElementById('audioDuration').textContent = `サイズ: ${mb} MB`;
+
+    resultArea.classList.add('visible');
+    setStatus('done', '✅ 録音完了');
+  }
+
+  function discardRecording() {
+    if (!confirm('録音データを削除しますか？')) return;
+    recordingBlob = null;
+    const player = document.getElementById('audioPlayer');
+    URL.revokeObjectURL(player.src);
+    player.src = '';
+    resultArea.classList.remove('visible');
+    timerDisplay.textContent = '00:00';
+    timerWarning.textContent = '';
+    setStatus('idle', '待機中');
+  }
+
+  function proceedToSTT() {
+    // Stage 2で実装
+    showError('📌 この機能はStage 2で実装予定です');
+  }
+
+  // --- MimeType 検出 ---
+  function getSupportedMimeType() {
+    const candidates = [
+      'audio/mp4',
+      'audio/aac',
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+    ];
+    for (const t of candidates) {
+      if (MediaRecorder.isTypeSupported(t)) return t;
+    }
+    return '';
+  }
+
+  // --- iOS フルスクリーン時のリサイズ対応 ---
+  function setVH() {
+    document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+  }
+  window.addEventListener('resize', setVH);
+  setVH();
+</script>
+</body>
+</html>
