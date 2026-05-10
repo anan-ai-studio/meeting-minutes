@@ -484,7 +484,7 @@
   <span style="font-size:22px">🎙️</span>
   <h1>会議メモ</h1>
   <span class="badge">Stage 2</span>
-  <span style="font-size:11px; color:var(--text-muted); margin-left:auto;">ver.5</span>
+  <span style="font-size:11px; color:var(--text-muted); margin-left:auto;">ver.6</span>
 </header>
 
 <main>
@@ -770,7 +770,12 @@
       const formData = new FormData();
       formData.append('audio', recordingBlob, 'recording.mp4');
 
-      const startRes = await fetch('./api_stt.php', { method: 'POST', body: formData });
+      let startRes;
+      try {
+        startRes = await fetch('./api_stt.php', { method: 'POST', body: formData });
+      } catch (fetchErr) {
+        throw new Error('サーバー接続失敗。PHPファイルのパスか.htaccessを確認してください。(' + fetchErr.message + ')');
+      }
       const startText = await startRes.text();
       let startJson;
       try { startJson = JSON.parse(startText); }
