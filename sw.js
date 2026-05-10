@@ -1,4 +1,4 @@
-const CACHE_NAME = 'meeting-minutes-v1';
+const CACHE_NAME = 'meeting-minutes-v5';
 const CACHED_URLS = ['./index.html', './manifest.json'];
 
 self.addEventListener('install', (event) => {

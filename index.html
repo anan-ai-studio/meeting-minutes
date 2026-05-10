@@ -323,20 +323,151 @@
       margin-bottom: 4px;
     }
 
+    /* 処理中エリア */
+    .processing-area {
+      width: 100%;
+      max-width: 400px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 20px;
+      text-align: center;
+      display: none;
+    }
+
+    .processing-area.visible { display: block; }
+
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .processing-status {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .processing-time {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* 文字起こし結果エリア */
+    .transcript-area {
+      width: 100%;
+      max-width: 400px;
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .transcript-area.visible { display: flex; }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* 話者名割り当て */
+    .speaker-assign {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .speaker-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .speaker-tag {
+      font-size: 13px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      min-width: 50px;
+    }
+
+    .speaker-input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+    }
+
+    .speaker-input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    /* 文字起こし本文 */
+    .transcript-content {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      user-select: text;
+      -webkit-user-select: text;
+      max-height: 50vh;
+      overflow-y: auto;
+    }
+
+    .utterance {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .utterance-speaker {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    .utterance-text {
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--text);
+    }
+
     /* エラー表示 */
     .error-toast {
       position: fixed;
       bottom: calc(20px + var(--safe-bottom));
       left: 50%;
-      transform: translateX(-50%) translateY(100px);
+      transform: translateX(-50%) translateY(200px);
       background: #7f1d1d;
       color: #fca5a5;
-      padding: 12px 20px;
+      padding: 14px 20px;
       border-radius: 12px;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 500;
-      max-width: 320px;
-      text-align: center;
+      max-width: calc(100vw - 32px);
+      width: 360px;
+      text-align: left;
+      word-break: break-all;
       transition: transform 0.3s ease;
       z-index: 100;
       box-shadow: 0 8px 24px rgba(0,0,0,0.4);
@@ -352,8 +483,8 @@
 <header>
   <span style="font-size:22px">🎙️</span>
   <h1>会議メモ</h1>
-  <span class="badge">Stage 1</span>
-  <span style="font-size:11px; color:var(--text-muted); margin-left:auto;">ver.2</span>
+  <span class="badge">Stage 2</span>
+  <span style="font-size:11px; color:var(--text-muted); margin-left:auto;">ver.5</span>
 </header>
 
 <main>
@@ -384,11 +515,11 @@
   <div class="gain-control">
     <div class="gain-label-row">
       <span>🔊 マイク音量増幅</span>
-      <span class="gain-value" id="gainLabel">2.0x</span>
+      <span class="gain-value" id="gainLabel">4.0x</span>
     </div>
-    <input type="range" id="gainSlider" min="1" max="5" step="0.5" value="2"
+    <input type="range" id="gainSlider" min="1" max="10" step="0.5" value="4"
       oninput="document.getElementById('gainLabel').textContent = parseFloat(this.value).toFixed(1) + 'x'">
-    <div class="gain-note">会議室中央に置く場合は 3〜4x 推奨</div>
+    <div class="gain-note">会議室中央に置く場合は 5〜8x 推奨（高すぎると音割れの可能性あり）</div>
   </div>
 
   <!-- 録音ボタン -->
@@ -417,11 +548,26 @@
     </div>
   </div>
 
-  <!-- Stage 1 注意書き -->
-  <div class="stage-notice">
-    <strong>🔧 Stage 1（録音テスト）</strong>
-    録音→再生の動作確認フェーズです。「議事録を作成」ボタンはStage 2で有効になります。<br>
-    iPhoneでHomeScreen追加後にマイク許可が正しく動くか確認してください。
+  <!-- 処理中エリア -->
+  <div class="processing-area" id="processingArea">
+    <div class="spinner"></div>
+    <div class="processing-status" id="processingStatus">アップロード中...</div>
+    <div class="processing-time" id="processingTime"></div>
+  </div>
+
+  <!-- 文字起こし結果エリア -->
+  <div class="transcript-area" id="transcriptArea">
+    <div class="section-title">👤 話者名を設定</div>
+    <div class="speaker-assign" id="speakerAssign"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="applyNames()">✅ 名前を反映</button>
+
+    <div class="section-title">📝 文字起こし結果</div>
+    <div class="transcript-content" id="transcriptContent"></div>
+
+    <div class="action-buttons">
+      <button class="btn btn-primary" onclick="copyTranscript()">📋 コピー</button>
+      <button class="btn btn-secondary" onclick="resetAll()">🔄 最初から</button>
+    </div>
   </div>
 </main>
 
@@ -469,7 +615,7 @@
     const toast = document.getElementById('errorToast');
     toast.textContent = msg;
     toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 4000);
+    setTimeout(() => toast.classList.remove('show'), 8000);
   }
 
   // --- 録音トグル ---
@@ -598,9 +744,189 @@
     setStatus('idle', '待機中');
   }
 
-  function proceedToSTT() {
-    // Stage 2で実装
-    showError('📌 この機能はStage 2で実装予定です');
+  // --- Stage 2: STT処理 ---
+  let utterances = [];
+  let pollInterval = null;
+  let processingSeconds = 0;
+
+  async function proceedToSTT() {
+    if (!recordingBlob) return;
+
+    // UI切り替え
+    resultArea.classList.remove('visible');
+    document.getElementById('processingArea').classList.add('visible');
+    document.getElementById('transcriptArea').classList.remove('visible');
+    setStatus('processing', '⏳ 文字起こし中...');
+    processingSeconds = 0;
+    updateProcessingTime();
+    const timeInterval = setInterval(() => {
+      processingSeconds++;
+      updateProcessingTime();
+    }, 1000);
+
+    try {
+      // Step 1: 音声をアップロード → operationName取得
+      document.getElementById('processingStatus').textContent = 'アップロード中...';
+      const formData = new FormData();
+      formData.append('audio', recordingBlob, 'recording.mp4');
+
+      const startRes = await fetch('./api_stt.php', { method: 'POST', body: formData });
+      const startText = await startRes.text();
+      let startJson;
+      try { startJson = JSON.parse(startText); }
+      catch { throw new Error('APIレスポンスが不正です: ' + startText.slice(0, 200)); }
+
+      if (startJson.error) {
+        const e = startJson.error;
+        const msg = typeof e === 'object' ? `[${e.status || e.code}] ${e.message}` : String(e);
+        throw new Error(msg);
+      }
+      if (!startRes.ok) throw new Error('HTTP ' + startRes.status);
+      if (!startJson.name) {
+        throw new Error('operationName取得失敗。レスポンス: ' + startText.slice(0, 200));
+      }
+
+      const opName = startJson.name; // "operations/xxxxx"
+      document.getElementById('processingStatus').textContent = '音声解析中...';
+
+      // Step 2: 完了するまでポーリング（10秒ごと）
+      await new Promise((resolve, reject) => {
+        pollInterval = setInterval(async () => {
+          try {
+            const pollRes = await fetch(`./api_stt_poll.php?op=${encodeURIComponent(opName)}`);
+            const pollJson = await pollRes.json();
+
+            if (pollJson.error) { reject(new Error(pollJson.error)); return; }
+
+            if (pollJson.done) {
+              clearInterval(pollInterval);
+              if (pollJson.error) {
+                const e = pollJson.error;
+                const msg = typeof e === 'object' ? `[${e.code}] ${e.message}` : String(e);
+                reject(new Error(msg)); return;
+              }
+              resolve(pollJson.response);
+            }
+          } catch (e) { reject(e); }
+        }, 10000);
+      }).then((sttResponse) => {
+        clearInterval(timeInterval);
+        showTranscript(sttResponse);
+      });
+
+    } catch (err) {
+      clearInterval(timeInterval);
+      clearInterval(pollInterval);
+      document.getElementById('processingArea').classList.remove('visible');
+      resultArea.classList.add('visible');
+      setStatus('done', '✅ 録音完了');
+      showError('エラー: ' + err.message);
+    }
+  }
+
+  function updateProcessingTime() {
+    const m = Math.floor(processingSeconds / 60);
+    const s = processingSeconds % 60;
+    const label = m > 0 ? `${m}分${s}秒経過` : `${s}秒経過`;
+    document.getElementById('processingTime').textContent = label;
+  }
+
+  // Google STT レスポンスを話者別に整形
+  function showTranscript(sttResponse) {
+    document.getElementById('processingArea').classList.remove('visible');
+
+    const results = sttResponse.results || [];
+    if (results.length === 0) {
+      showError('文字起こし結果が空でした。音量や録音時間を確認してください。');
+      return;
+    }
+
+    // 話者分離情報は最後のresultのwordsに含まれる
+    const lastResult = results[results.length - 1];
+    const words = lastResult?.alternatives?.[0]?.words || [];
+
+    // 連続する同一話者をまとめてutterancesに変換
+    utterances = [];
+    let current = null;
+    for (const w of words) {
+      const spk = w.speakerTag || 1;
+      if (!current || current.speaker !== spk) {
+        current = { speaker: spk, text: w.word };
+        utterances.push(current);
+      } else {
+        current.text += w.word; // 日本語はスペース不要
+      }
+    }
+
+    // 登場した話者番号を収集
+    const speakers = [...new Set(utterances.map((u) => u.speaker))].sort((a, b) => a - b);
+
+    // 話者名入力フィールドを生成
+    const assignDiv = document.getElementById('speakerAssign');
+    assignDiv.innerHTML = '';
+    for (const spk of speakers) {
+      const row = document.createElement('div');
+      row.className = 'speaker-row';
+      row.innerHTML = `
+        <span class="speaker-tag">話者${spk}</span>
+        <input class="speaker-input" type="text" id="name_${spk}"
+          placeholder="例：田中さん" inputmode="text">
+      `;
+      assignDiv.appendChild(row);
+    }
+
+    renderTranscript();
+
+    document.getElementById('transcriptArea').classList.add('visible');
+    setStatus('done', '✅ 文字起こし完了');
+
+    // 結果エリアまでスクロール
+    document.getElementById('transcriptArea').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function renderTranscript() {
+    const content = document.getElementById('transcriptContent');
+    content.innerHTML = '';
+    for (const u of utterances) {
+      const nameInput = document.getElementById(`name_${u.speaker}`);
+      const name = nameInput?.value.trim() || `話者${u.speaker}`;
+      const div = document.createElement('div');
+      div.className = 'utterance';
+      div.innerHTML = `
+        <span class="utterance-speaker">${name}</span>
+        <span class="utterance-text">${u.text}</span>
+      `;
+      content.appendChild(div);
+    }
+  }
+
+  function applyNames() { renderTranscript(); }
+
+  function copyTranscript() {
+    const lines = utterances.map((u) => {
+      const nameInput = document.getElementById(`name_${u.speaker}`);
+      const name = nameInput?.value.trim() || `話者${u.speaker}`;
+      return `${name}：${u.text}`;
+    });
+    navigator.clipboard.writeText(lines.join('\n')).then(() => {
+      showError('✅ クリップボードにコピーしました');
+    });
+  }
+
+  function resetAll() {
+    if (!confirm('最初からやり直しますか？')) return;
+    utterances = [];
+    recordingBlob = null;
+    const player = document.getElementById('audioPlayer');
+    if (player.src) URL.revokeObjectURL(player.src);
+    player.src = '';
+    resultArea.classList.remove('visible');
+    document.getElementById('processingArea').classList.remove('visible');
+    document.getElementById('transcriptArea').classList.remove('visible');
+    timerDisplay.textContent = '00:00';
+    timerWarning.textContent = '';
+    setStatus('idle', '待機中');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   // --- MimeType 検出 ---
