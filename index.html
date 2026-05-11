@@ -484,7 +484,7 @@
   <span style="font-size:22px">🎙️</span>
   <h1>会議メモ</h1>
   <span class="badge">Stage 2</span>
-  <span style="font-size:11px; color:var(--text-muted); margin-left:auto;">ver.6</span>
+  <span style="font-size:11px; color:var(--text-muted); margin-left:auto;">ver.7</span>
 </header>
 
 <main>
@@ -744,15 +744,23 @@
     setStatus('idle', '待機中');
   }
 
-  // --- Stage 2: STT処理 ---
+  // --- Stage 2: Gemini 文字起こし ---
   let utterances = [];
-  let pollInterval = null;
   let processingSeconds = 0;
+
+  // BlobをBase64文字列に変換（smatraと同じ方式）
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
 
   async function proceedToSTT() {
     if (!recordingBlob) return;
 
-    // UI切り替え
     resultArea.classList.remove('visible');
     document.getElementById('processingArea').classList.add('visible');
     document.getElementById('transcriptArea').classList.remove('visible');
@@ -765,63 +773,54 @@
     }, 1000);
 
     try {
-      // Step 1: 音声をアップロード → operationName取得
-      document.getElementById('processingStatus').textContent = 'アップロード中...';
-      const formData = new FormData();
-      formData.append('audio', recordingBlob, 'recording.mp4');
+      document.getElementById('processingStatus').textContent = '音声を変換中...';
+      const mimeType = recordingBlob.type || 'audio/mp4';
+      const base64 = await blobToBase64(recordingBlob);
 
-      let startRes;
-      try {
-        startRes = await fetch('./api_stt.php', { method: 'POST', body: formData });
-      } catch (fetchErr) {
-        throw new Error('サーバー接続失敗。PHPファイルのパスか.htaccessを確認してください。(' + fetchErr.message + ')');
-      }
-      const startText = await startRes.text();
-      let startJson;
-      try { startJson = JSON.parse(startText); }
-      catch { throw new Error('APIレスポンスが不正です: ' + startText.slice(0, 200)); }
+      document.getElementById('processingStatus').textContent = 'Geminiで解析中...';
 
-      if (startJson.error) {
-        const e = startJson.error;
-        const msg = typeof e === 'object' ? `[${e.status || e.code}] ${e.message}` : String(e);
-        throw new Error(msg);
-      }
-      if (!startRes.ok) throw new Error('HTTP ' + startRes.status);
-      if (!startJson.name) {
-        throw new Error('operationName取得失敗。レスポンス: ' + startText.slice(0, 200));
-      }
+      const prompt = `この音声は日本語の会議録音です。以下を行ってください。
+1. 音声全体を正確に文字起こしする
+2. 話者を識別して番号を振る（話者1〜最大6まで）
+3. 時系列で話者ごとのセリフをまとめる
+4. 短い相槌（「うん」「はい」等）も省略せず含める
 
-      const opName = startJson.name; // "operations/xxxxx"
-      document.getElementById('processingStatus').textContent = '音声解析中...';
+必ず以下のJSON形式のみで返してください（マークダウン・コードブロック不要）：
+{"speakers":3,"utterances":[{"speaker":1,"text":"テキスト"},{"speaker":2,"text":"テキスト"}]}`;
 
-      // Step 2: 完了するまでポーリング（10秒ごと）
-      await new Promise((resolve, reject) => {
-        pollInterval = setInterval(async () => {
-          try {
-            const pollRes = await fetch(`./api_stt_poll.php?op=${encodeURIComponent(opName)}`);
-            const pollJson = await pollRes.json();
-
-            if (pollJson.error) { reject(new Error(pollJson.error)); return; }
-
-            if (pollJson.done) {
-              clearInterval(pollInterval);
-              if (pollJson.error) {
-                const e = pollJson.error;
-                const msg = typeof e === 'object' ? `[${e.code}] ${e.message}` : String(e);
-                reject(new Error(msg)); return;
-              }
-              resolve(pollJson.response);
-            }
-          } catch (e) { reject(e); }
-        }, 10000);
-      }).then((sttResponse) => {
-        clearInterval(timeInterval);
-        showTranscript(sttResponse);
+      const body = JSON.stringify({
+        contents: [{
+          parts: [
+            { inline_data: { mime_type: mimeType, data: base64 } },
+            { text: prompt }
+          ]
+        }]
       });
+
+      let res;
+      try {
+        res = await fetch('./api_gemini.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body
+        });
+      } catch (fetchErr) {
+        throw new Error('サーバー接続失敗: ' + fetchErr.message);
+      }
+
+      const resText = await res.text();
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${resText.slice(0, 200)}`);
+
+      const data = JSON.parse(resText);
+      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      const match = rawText.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('レスポンス解析失敗: ' + rawText.slice(0, 200));
+
+      clearInterval(timeInterval);
+      showTranscript(JSON.parse(match[0]));
 
     } catch (err) {
       clearInterval(timeInterval);
-      clearInterval(pollInterval);
       document.getElementById('processingArea').classList.remove('visible');
       resultArea.classList.add('visible');
       setStatus('done', '✅ 録音完了');
@@ -832,41 +831,21 @@
   function updateProcessingTime() {
     const m = Math.floor(processingSeconds / 60);
     const s = processingSeconds % 60;
-    const label = m > 0 ? `${m}分${s}秒経過` : `${s}秒経過`;
-    document.getElementById('processingTime').textContent = label;
+    document.getElementById('processingTime').textContent =
+      m > 0 ? `${m}分${s}秒経過` : `${s}秒経過`;
   }
 
-  // Google STT レスポンスを話者別に整形
-  function showTranscript(sttResponse) {
+  // Geminiレスポンスを話者別に表示
+  function showTranscript(parsed) {
     document.getElementById('processingArea').classList.remove('visible');
 
-    const results = sttResponse.results || [];
-    if (results.length === 0) {
-      showError('文字起こし結果が空でした。音量や録音時間を確認してください。');
+    utterances = parsed.utterances || [];
+    if (utterances.length === 0) {
+      showError('文字起こし結果が空でした。録音時間や音量を確認してください。');
       return;
     }
 
-    // 話者分離情報は最後のresultのwordsに含まれる
-    const lastResult = results[results.length - 1];
-    const words = lastResult?.alternatives?.[0]?.words || [];
-
-    // 連続する同一話者をまとめてutterancesに変換
-    utterances = [];
-    let current = null;
-    for (const w of words) {
-      const spk = w.speakerTag || 1;
-      if (!current || current.speaker !== spk) {
-        current = { speaker: spk, text: w.word };
-        utterances.push(current);
-      } else {
-        current.text += w.word; // 日本語はスペース不要
-      }
-    }
-
-    // 登場した話者番号を収集
     const speakers = [...new Set(utterances.map((u) => u.speaker))].sort((a, b) => a - b);
-
-    // 話者名入力フィールドを生成
     const assignDiv = document.getElementById('speakerAssign');
     assignDiv.innerHTML = '';
     for (const spk of speakers) {
@@ -881,11 +860,8 @@
     }
 
     renderTranscript();
-
     document.getElementById('transcriptArea').classList.add('visible');
     setStatus('done', '✅ 文字起こし完了');
-
-    // 結果エリアまでスクロール
     document.getElementById('transcriptArea').scrollIntoView({ behavior: 'smooth' });
   }
 
